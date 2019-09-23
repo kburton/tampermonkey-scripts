@@ -12,12 +12,19 @@
   'use strict'
 
   const slack = (() => {
-    const getTeamId = () => document.querySelector('[data-teamid]').dataset.teamid
+    const teamIdSelector = '[data-teamid]'
+    const channelNodesSelector = '[data-qa-channel-sidebar-channel-type=channel], [data-qa-channel-sidebar-channel-type=private]'
+
+    const waitUntilReady = async () => {
+      while (document.querySelector(teamIdSelector) === null) {
+        await new Promise(resolve => requestAnimationFrame(resolve))
+      }
+    }
+
+    const getTeamId = () => document.querySelector(teamIdSelector).dataset.teamid
 
     const getChannels = () => {
-      const channelNodes = [...document.querySelectorAll(
-        '[data-qa-channel-sidebar-channel-type=channel], [data-qa-channel-sidebar-channel-type=private]'
-      )]
+      const channelNodes = [...document.querySelectorAll(channelNodesSelector)]
       return channelNodes.map(node => ({
         id: node.dataset.qaChannelSidebarChannelId,
         name: node.innerText
@@ -25,47 +32,76 @@
     }
 
     return {
+      waitUntilReady,
       getTeamId,
       getChannels
     }
   })()
 
-  const groups = (() => {
-    const all = {}
+  const state = (() => {
+    let data = {
+      groups: []
+    }
 
-    const add = (name, color) => {
-      if (!all[name]) {
-        all[name] = { name, color, channels: {} }
+    const getStorageKey = () => {
+      return `kburton/tampermonkey-scripts/slack-groups::${slack.getTeamId()}`
+    }
+
+    const init = () => {
+      const fromStorage = window.localStorage.getItem(getStorageKey())
+      if (fromStorage !== null) {
+        const deserialized = JSON.parse(fromStorage)
+        data.groups = deserialized.groups
       }
     }
-    const remove = (name) => {
-      if (all[name]) {
-        delete all[name]
+
+    const persist = () => {
+      window.localStorage.setItem(getStorageKey(), JSON.stringify(data))
+    }
+
+    const getGroups = () => data.groups
+
+    const addGroup = group => {
+      data.groups.push(group)
+      persist()
+    }
+
+    const updateGroup = (index, group) => {
+      if (index >= 0 && index < data.groups.length) {
+        data.groups[index] = group
+        persist()
       }
     }
-    const addChannel = (id, name, groupName) => {
-      if (groups[groupName]) {
-        groups[groupName].channels[id] = { id, name }
-      }
-    }
-    const removeChannel = (id, groupName) => {
-      if (groups[groupName].channels[id]) {
-        delete groups[groupName].channels[id]
+
+    const removeGroup = index => {
+      if (index >= 0 && index < data.groups.length) {
+        data.groups = data.groups.splice(index, 1)
+        persist()
       }
     }
 
     return {
-      all,
-      add,
-      remove,
-      addChannel,
-      removeChannel
+      init,
+      getGroups,
+      addGroup,
+      updateGroup,
+      removeGroup
     }
   })()
 
   const modal = (() => {
+    let stack = []
+
+    const closeButtonNode = document.createElement('div')
+    closeButtonNode.className = 'modal__close'
+    closeButtonNode.textContent = '✕'
+
+    const contentNode = document.createElement('div')
+
     const dialogNode = document.createElement('div')
     dialogNode.className = 'modal__dialog'
+    dialogNode.appendChild(closeButtonNode)
+    dialogNode.appendChild(contentNode)
 
     const wrapperNode = document.createElement('div')
     wrapperNode.className = 'modal__wrapper'
@@ -75,16 +111,33 @@
     node.className = 'modal'
     node.appendChild(wrapperNode)
 
-    const show = (contentNode) => {
-      dialogNode.innerHTML = ''
-      dialogNode.appendChild(contentNode)
-      node.className = 'modal modal--visible'
+    const render = () => {
+      if (stack.length === 0) {
+        node.className = 'modal'
+      } else {
+        contentNode.innerHTML = ''
+        contentNode.appendChild(stack[stack.length - 1])
+        node.className = 'modal modal--visible'
+      }
     }
 
-    const hide = () => {node.className = 'modal'}
+    const isShowing = () => stack.length > 0
+
+    const show = (contentNode) => {
+      stack.push(contentNode)
+      render()
+    }
+
+    const hide = () => {
+      stack.pop()
+      render()
+    }
+
+    closeButtonNode.addEventListener('click', hide)
 
     return {
       node,
+      isShowing,
       show,
       hide
     }
@@ -145,6 +198,55 @@
     }
   })()
 
+  const groupSelectionForm = (() => {
+    const headerNode = document.createElement('h1')
+    headerNode.textContent = 'Select Groups to Highlight'
+
+    const addGroupNode = document.createElement('div')
+    addGroupNode.className = 'group-selection-form__add-group'
+    addGroupNode.textContent = '＋'
+    addGroupNode.addEventListener('click', () => {
+      modal.show(groupConfigurationForm.content())
+    })
+
+    const groupContainerNode = document.createElement('div')
+    groupContainerNode.className = 'group-selection-form__group-container'
+
+    const node = document.createElement('div')
+    node.className = 'group-selection-form'
+    node.appendChild(addGroupNode)
+    node.appendChild(headerNode)
+    node.appendChild(groupContainerNode)
+
+    const content = () => {
+      groupContainerNode.innerHTML = ''
+
+      state.getGroups().forEach(({ name, color }) => {
+        const checkboxNode = document.createElement('input')
+        checkboxNode.type = 'checkbox'
+
+        const nameNode = document.createElement('span')
+        nameNode.textContent = name
+
+        const labelNode = document.createElement('label')
+        labelNode.style.borderBottom = `2px solid ${color}`
+        labelNode.appendChild(checkboxNode)
+        labelNode.appendChild(nameNode)
+
+        const rowNode = document.createElement('div')
+        rowNode.appendChild(labelNode)
+
+        groupContainerNode.appendChild(rowNode)
+      })
+
+      return node
+    }
+
+    return {
+      content
+    }
+  })()
+
   const style = (() => {
     const node = document.createElement('style')
     node.textContent = `
@@ -191,6 +293,14 @@
         box-shadow: #555 0 0 10px;
         z-index: 1000001;
       }
+      .modal__close {
+        position: absolute;
+        top: 0;
+        right: 0;
+        font-size: 1.6em;
+        padding: 0.2em 0.5em;
+        cursor: pointer;
+      }
       .modal h1 {
         font-size: 1.4em;
         font-weight: normal;
@@ -216,6 +326,26 @@
         height: 10em;
         padding: 0.5em;
       }
+      .group-selection-form__group-container {
+        margin-bottom: 1em;
+      }
+      .group-selection-form__add-group {
+        position: absolute;
+        top: 0;
+        right: 1em;
+        font-size: 1.8em;
+        padding: 0.1em 0.5em;
+        color: #007700;
+        cursor: pointer;
+      }
+      .group-selection-form__group-container label {
+        display: inline-block;
+        vertical-align: middle;
+      }
+      .group-selection-form__group-container label * {
+        vertical-align: middle;
+        margin-right: 0.5em;
+      }
     `
 
     return {
@@ -233,7 +363,43 @@
     }
   })()
 
-  document.body.appendChild(root.node)
+  const eventHandlers = (() => {
+    const bindKeyDown = () => {
+      let shiftCount = 0
+      document.addEventListener('keydown', e => {
+        const isEscape = e.code === 'Escape'
+        const isShift = e.code.substring(0, 5) === 'Shift'
+        shiftCount = isShift && !modal.isShowing() ? shiftCount + 1 : 0
+
+        if (shiftCount >= 3) {
+          shiftCount = 0
+          modal.show(
+            state.getGroups().length === 0 ? groupConfigurationForm.content() : groupSelectionForm.content()
+          )
+        }
+
+        if (isEscape) {
+          modal.hide()
+        }
+      })
+    }
+
+    const init = () => {
+      bindKeyDown()
+    }
+
+    return {
+      init
+    }
+  })()
+
+  slack.waitUntilReady().then(() => {
+    document.body.appendChild(root.node)
+    state.init()
+    eventHandlers.init()
+    console.log(`Tampermonkey Slack Groups initialized for Slack team ${slack.getTeamId()}`)
+  })
+
   window.slackGroups = {
     modal,
     groupConfigurationForm,

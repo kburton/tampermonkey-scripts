@@ -39,9 +39,12 @@
   })()
 
   const state = (() => {
-    let data = {
+    const data = {
       groups: []
     }
+
+    const groupUpdateListeners = []
+    const selectionUpdateListeners = []
 
     const getStorageKey = () => {
       return `kburton/tampermonkey-scripts/slack-groups::${slack.getTeamId()}`
@@ -51,8 +54,24 @@
       const fromStorage = window.localStorage.getItem(getStorageKey())
       if (fromStorage !== null) {
         const deserialized = JSON.parse(fromStorage)
-        data.groups = deserialized.groups
+        data.groups = deserialized.groups || []
       }
+    }
+
+    const registerGroupUpdateListener = onUpdate => {
+      groupUpdateListeners.push(onUpdate)
+    }
+
+    const registerSelectionUpdateListener = onUpdate => {
+      selectionUpdateListeners.push(onUpdate)
+    }
+
+    const notifyGroupUpdateListeners = () => {
+      groupUpdateListeners.forEach(updateListener => updateListener())
+    }
+
+    const notifySelectionUpdateListeners = () => {
+      selectionUpdateListeners.forEach(updateListener => updateListener())
     }
 
     const persist = () => {
@@ -64,28 +83,44 @@
     const addGroup = group => {
       data.groups.push(group)
       persist()
+      notifyGroupUpdateListeners()
     }
 
     const updateGroup = (index, group) => {
       if (index >= 0 && index < data.groups.length) {
         data.groups[index] = group
         persist()
+        notifyGroupUpdateListeners()
+        notifySelectionUpdateListeners()
       }
     }
 
     const removeGroup = index => {
       if (index >= 0 && index < data.groups.length) {
-        data.groups = data.groups.splice(index, 1)
+        data.groups.splice(index, 1)
         persist()
+        notifyGroupUpdateListeners()
+        notifySelectionUpdateListeners()
+      }
+    }
+
+    const toggleGroupSelection = index => {
+      if (index >= 0 && index < data.groups.length) {
+        data.groups[index].isSelected = !data.groups[index].isSelected
+        persist()
+        notifySelectionUpdateListeners()
       }
     }
 
     return {
       init,
+      registerGroupUpdateListener,
+      registerSelectionUpdateListener,
       getGroups,
       addGroup,
       updateGroup,
-      removeGroup
+      removeGroup,
+      toggleGroupSelection
     }
   })()
 
@@ -168,28 +203,71 @@
     channelSelectRowNode.className = 'group-configuration-form__row'
     channelSelectRowNode.appendChild(channelSelectNode)
 
+    const controlsNode = document.createElement('div')
+    controlsNode.className = 'group-configuration-form__controls'
+
     const node = document.createElement('div')
     node.className = 'group-configuration-form'
     node.appendChild(headerNode)
     node.appendChild(groupRowNode)
     node.appendChild(channelSelectRowNode)
+    node.appendChild(controlsNode)
 
-    const content = (name, color) => {
-      if (name === undefined) {
-        headerNode.textContent = 'Create Group'
-        nameInputNode.value = ''
-      } else {
-        headerNode.textContent = 'Edit Group'
-        nameInputNode.value = name
-      }
-      colorInputNode.value = color || '#77FF77'
+    const updateControlsNode = (onSubmit) => {
+      const submitNode = document.createElement('input')
+      submitNode.type = 'button'
+      submitNode.className = 'group-configuration-form__submit'
+      submitNode.value = 'Save'
+      submitNode.addEventListener('click', onSubmit)
+
+      const cancelNode = document.createElement('input')
+      cancelNode.type = 'button'
+      cancelNode.className = 'group-configuration-form__cancel'
+      cancelNode.value = 'Cancel'
+      cancelNode.addEventListener('click', modal.hide)
+
+      controlsNode.innerHTML = ''
+      controlsNode.appendChild(submitNode)
+      controlsNode.appendChild(cancelNode)
+    }
+
+    const content = (groupIndex = undefined) => {
+      const isNewGroup = groupIndex === undefined
+      const group = isNewGroup ? {
+        name: '',
+        color: '#77FF77',
+        channels: [],
+        isSelected: false
+      } : state.getGroups()[groupIndex]
+
+      headerNode.textContent = isNewGroup ? 'Create Group' : 'Edit Group'
+      nameInputNode.value = group.name
+      colorInputNode.value = group.color
+
       channelSelectNode.innerHTML = ''
       slack.getChannels().map(channel => {
         const optionNode = document.createElement('option')
         optionNode.value = channel.id
         optionNode.text = channel.name
+        optionNode.selected = group.channels.includes(channel.id)
         channelSelectNode.appendChild(optionNode)
       })
+
+      updateControlsNode(() => {
+        const updatedGroup = {
+          name: nameInputNode.value,
+          color: colorInputNode.value,
+          channels: [...channelSelectNode.querySelectorAll('option:checked')].map(option => option.value),
+          isSelected: group.isSelected
+        }
+        if (isNewGroup) {
+          state.addGroup(updatedGroup)
+        } else {
+          state.updateGroup(groupIndex, updatedGroup)
+        }
+        modal.hide()
+      })
+
       return node
     }
 
@@ -221,9 +299,11 @@
     const content = () => {
       groupContainerNode.innerHTML = ''
 
-      state.getGroups().forEach(({ name, color }) => {
+      state.getGroups().forEach(({ name, color, isSelected }, index) => {
         const checkboxNode = document.createElement('input')
         checkboxNode.type = 'checkbox'
+        checkboxNode.checked = isSelected
+        checkboxNode.addEventListener('change', () => state.toggleGroupSelection(index))
 
         const nameNode = document.createElement('span')
         nameNode.textContent = name
@@ -233,14 +313,39 @@
         labelNode.appendChild(checkboxNode)
         labelNode.appendChild(nameNode)
 
+        const spacerNode = document.createElement('div')
+        spacerNode.className = 'group-selection-form__group-spacer'
+
+        const editNode = document.createElement('div')
+        editNode.className = 'group-selection-form__group-button'
+        editNode.textContent = 'Edit'
+        editNode.addEventListener('click', () => {
+          modal.show(groupConfigurationForm.content(index))
+        })
+
+        const deleteNode = document.createElement('div')
+        deleteNode.className = 'group-selection-form__group-button'
+        deleteNode.textContent = 'Delete'
+        deleteNode.addEventListener('click', () => {
+          if (window.confirm(`Delete group '${name}'?`)) {
+            state.removeGroup(index)
+          }
+        })
+
         const rowNode = document.createElement('div')
+        rowNode.className = 'group-selection-form__group'
         rowNode.appendChild(labelNode)
+        rowNode.appendChild(spacerNode)
+        rowNode.appendChild(editNode)
+        rowNode.appendChild(deleteNode)
 
         groupContainerNode.appendChild(rowNode)
       })
 
       return node
     }
+
+    state.registerGroupUpdateListener(content)
 
     return {
       content
@@ -326,6 +431,16 @@
         height: 10em;
         padding: 0.5em;
       }
+      .group-configuration-form__controls {
+        margin-bottom: 1em;
+        text-align:right;
+      }
+      .group-configuration-form__controls input {
+        cursor: pointer;
+      }
+      .group-configuration-form__submit {
+        margin-right: 0.5em;
+      }
       .group-selection-form__group-container {
         margin-bottom: 1em;
       }
@@ -345,6 +460,21 @@
       .group-selection-form__group-container label * {
         vertical-align: middle;
         margin-right: 0.5em;
+      }
+      .group-selection-form__group {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+      }
+      .group-selection-form__group:hover {
+        background-color: #EEEEEE;
+      }
+      .group-selection-form__group-spacer {
+        flex-grow: 1;
+      }
+      .group-selection-form__group-button {
+        margin-right: 0.5em;
+        cursor: pointer;
       }
     `
 

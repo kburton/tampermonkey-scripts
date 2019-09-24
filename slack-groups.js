@@ -153,6 +153,11 @@
         contentNode.innerHTML = ''
         contentNode.appendChild(stack[stack.length - 1])
         node.className = 'modal modal--visible'
+
+        const firstInput = contentNode.querySelector('input')
+        if (firstInput) {
+          window.setTimeout(() => firstInput.focus(), 0)
+        }
       }
     }
 

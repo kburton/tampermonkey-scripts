@@ -40,7 +40,8 @@
 
   const state = (() => {
     const data = {
-      groups: []
+      groups: [],
+      muteUnselectedChannels: true
     }
 
     const groupUpdateListeners = []
@@ -55,6 +56,7 @@
       if (fromStorage !== null) {
         const deserialized = JSON.parse(fromStorage)
         data.groups = deserialized.groups || []
+        data.muteUnselectedChannels = deserialized.muteUnselectedChannels
       }
     }
 
@@ -112,6 +114,14 @@
       }
     }
 
+    const getMuteUnselectedChannels = () => data.muteUnselectedChannels
+
+    const toggleMuteUnselectedChannels = () => {
+      data.muteUnselectedChannels = !data.muteUnselectedChannels
+      persist()
+      notifySelectionUpdateListeners()
+    }
+
     return {
       init,
       registerGroupUpdateListener,
@@ -120,7 +130,9 @@
       addGroup,
       updateGroup,
       removeGroup,
-      toggleGroupSelection
+      toggleGroupSelection,
+      getMuteUnselectedChannels,
+      toggleMuteUnselectedChannels
     }
   })()
 
@@ -358,57 +370,75 @@
     const groupContainerNode = document.createElement('div')
     groupContainerNode.className = 'group-selection-form__group-container'
 
+    const muteUnselectedCheckboxNode = document.createElement('input')
+    muteUnselectedCheckboxNode.type = 'checkbox'
+    muteUnselectedCheckboxNode.addEventListener('change', state.toggleMuteUnselectedChannels)
+
+    const muteUnselectedDescriptionNode = document.createElement('span')
+    muteUnselectedDescriptionNode.textContent = 'Mute unselected channels'
+
+    const muteUnselectedLabelNode = document.createElement('label')
+    muteUnselectedLabelNode.className = 'group-selection-form__mute'
+    muteUnselectedLabelNode.appendChild(muteUnselectedCheckboxNode)
+    muteUnselectedLabelNode.appendChild(muteUnselectedDescriptionNode)
+
     const node = document.createElement('div')
     node.className = 'group-selection-form'
     node.appendChild(addGroupNode)
     node.appendChild(headerNode)
     node.appendChild(groupContainerNode)
+    node.appendChild(muteUnselectedLabelNode)
 
     const content = () => {
       groupContainerNode.innerHTML = ''
 
-      state.getGroups().forEach(({ name, color, isSelected }, index) => {
-        const checkboxNode = document.createElement('input')
-        checkboxNode.type = 'checkbox'
-        checkboxNode.checked = isSelected
-        checkboxNode.addEventListener('change', () => state.toggleGroupSelection(index))
+      muteUnselectedCheckboxNode.checked = state.getMuteUnselectedChannels()
 
-        const nameNode = document.createElement('span')
-        nameNode.textContent = name
+      state.getGroups()
+        .map(({ name, color, isSelected }, index) => ({ name, color, isSelected, index }))
+        .sort((group1, group2) => group1.name.toLowerCase() < group2.name.toLowerCase() ? -1 : 1)
+        .forEach(({ name, color, isSelected, index }) => {
+          const checkboxNode = document.createElement('input')
+          checkboxNode.type = 'checkbox'
+          checkboxNode.checked = isSelected
+          checkboxNode.addEventListener('change', () => state.toggleGroupSelection(index))
 
-        const labelNode = document.createElement('label')
-        labelNode.style.borderBottom = `2px solid ${color}`
-        labelNode.appendChild(checkboxNode)
-        labelNode.appendChild(nameNode)
+          const nameNode = document.createElement('span')
+          nameNode.textContent = name
 
-        const spacerNode = document.createElement('div')
-        spacerNode.className = 'group-selection-form__group-spacer'
+          const labelNode = document.createElement('label')
+          labelNode.style.borderBottom = `2px solid ${color}`
+          labelNode.appendChild(checkboxNode)
+          labelNode.appendChild(nameNode)
 
-        const editNode = document.createElement('div')
-        editNode.className = 'group-selection-form__group-button'
-        editNode.appendChild(icons.edit())
-        editNode.addEventListener('click', () => {
-          modal.show(groupConfigurationForm.content(index))
+          const spacerNode = document.createElement('div')
+          spacerNode.className = 'group-selection-form__group-spacer'
+
+          const editNode = document.createElement('div')
+          editNode.className = 'group-selection-form__group-button'
+          editNode.appendChild(icons.edit())
+          editNode.addEventListener('click', () => {
+            modal.show(groupConfigurationForm.content(index))
+          })
+
+          const removeNode = document.createElement('div')
+          removeNode.className = 'group-selection-form__group-button'
+          removeNode.appendChild(icons.remove())
+          removeNode.addEventListener('click', () => {
+            if (window.confirm(`Delete group '${name}'?`)) {
+              state.removeGroup(index)
+            }
+          })
+
+          const rowNode = document.createElement('div')
+          rowNode.className = 'group-selection-form__group'
+          rowNode.appendChild(labelNode)
+          rowNode.appendChild(spacerNode)
+          rowNode.appendChild(editNode)
+          rowNode.appendChild(removeNode)
+
+          groupContainerNode.appendChild(rowNode)
         })
-
-        const removeNode = document.createElement('div')
-        removeNode.className = 'group-selection-form__group-button'
-        removeNode.appendChild(icons.remove())
-        removeNode.addEventListener('click', () => {
-          if (window.confirm(`Delete group '${name}'?`)) {
-            state.removeGroup(index)
-          }
-        })
-
-        const rowNode = document.createElement('div')
-        rowNode.className = 'group-selection-form__group'
-        rowNode.appendChild(labelNode)
-        rowNode.appendChild(spacerNode)
-        rowNode.appendChild(editNode)
-        rowNode.appendChild(removeNode)
-
-        groupContainerNode.appendChild(rowNode)
-      })
 
       return node
     }
@@ -488,9 +518,11 @@
       }
       .icon--add {
         stroke: #009900;
+        height: 1.2em;
+        width: 1.2em;
       }
       .icon--edit {
-        stroke: #774201;
+        stroke: #333333;
       }
       .icon--remove {
         stroke: #B72D2D;
@@ -530,15 +562,15 @@
       }
       .group-selection-form__add-group {
         position: absolute;
-        top: 1em;
-        right: 2.5em;
+        bottom: 1em;
+        right: 1em;
       }
       .group-selection-form__group-container label {
-        display: inline-block;
-        vertical-align: middle;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
       }
-      .group-selection-form__group-container label * {
-        vertical-align: middle;
+      .group-selection-form__group-container label input {
         margin-right: 0.5em;
       }
       .group-selection-form__group {
@@ -555,12 +587,60 @@
         flex-grow: 1;
       }
       .group-selection-form__group-button {
+        opacity: 0.2;
         margin-left: 0.5em;
+      }
+      .group-selection-form__group:hover .group-selection-form__group-button {
+        opacity: 1;
+      }
+      .group-selection-form__mute {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        margin-bottom: 0.4em;
+        font-style: italic;
+        color: #555;
+      }
+      .group-selection-form__mute input {
+        margin-right: 0.5em;
       }
     `
 
     return {
       node
+    }
+  })()
+
+  const slackStyle = (() => {
+    const node = document.createElement('style')
+
+    const update = () => {
+      const selectedGroups = state.getGroups().filter(group => group.isSelected)
+
+      const cssRules = []
+
+      if (selectedGroups.length > 0 && state.getMuteUnselectedChannels()) {
+        const publicChannelSelector = '[data-qa-channel-sidebar-channel-type="channel"] span'
+        const privateChannelSelector = '[data-qa-channel-sidebar-channel-type="private"] span'
+        const activeChannelSelector = '[data-qa-channel-sidebar-channel-is-selected="true"] span'
+
+        cssRules.push(`${publicChannelSelector}, ${privateChannelSelector} { opacity: 0.2 !important; }`)
+        cssRules.push(`${activeChannelSelector} { opacity: 1 !important; }`)
+      }
+
+      selectedGroups.forEach(group => {
+        const selector = group.channels.map(channel => `[data-qa-channel-sidebar-channel-id="${channel}"] span`).join(', ')
+        cssRules.push(`${selector} { color: ${group.color} !important; opacity: 1 !important; }`)
+      })
+
+      node.textContent = cssRules.join('\n')
+    }
+
+    state.registerSelectionUpdateListener(update)
+
+    return {
+      node,
+      update
     }
   })()
 
@@ -606,14 +686,10 @@
 
   slack.waitUntilReady().then(() => {
     document.body.appendChild(root.node)
+    document.body.appendChild(slackStyle.node)
     state.init()
+    slackStyle.update()
     eventHandlers.init()
     console.log(`Tampermonkey Slack Groups initialized for Slack team ${slack.getTeamId()}`)
   })
-
-  window.slackGroups = {
-    modal,
-    groupConfigurationForm,
-    slack
-  }
 })()

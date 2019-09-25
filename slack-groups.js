@@ -124,12 +124,75 @@
     }
   })()
 
+  const icons = (() => {
+    const svgNs = 'http://www.w3.org/2000/svg'
+
+    const createBaseSvg = (className) => {
+      const svg = document.createElementNS(svgNs, 'svg')
+      svg.setAttribute('class', className)
+      svg.setAttribute('viewBox', '0 0 12 12')
+      return svg
+    }
+
+    const createLine = (x1, y1, x2, y2) => {
+      const line = document.createElementNS(svgNs, 'line')
+      line.setAttribute('x1', x1.toString())
+      line.setAttribute('y1', y1.toString())
+      line.setAttribute('x2', x2.toString())
+      line.setAttribute('y2', y2.toString())
+      line.setAttribute('stroke-width', '2')
+      line.setAttribute('stroke-linecap', 'round')
+      return line
+    }
+
+    const close = () => {
+      const svg = createBaseSvg('icon icon--close')
+      svg.appendChild(createLine(1, 1, 11, 11))
+      svg.appendChild(createLine(1, 11, 11, 1))
+      return svg
+    }
+
+    const add = () => {
+      const svg = createBaseSvg('icon icon--add')
+      svg.appendChild(createLine(1, 6, 11, 6))
+      svg.appendChild(createLine(6, 1, 6, 11))
+      return svg
+    }
+
+    const edit = () => {
+      const svg = createBaseSvg('icon icon--edit')
+      svg.appendChild(createLine(1, 11, 2, 8))
+      svg.appendChild(createLine(2, 8, 9, 1))
+      svg.appendChild(createLine(9, 1, 11, 3))
+      svg.appendChild(createLine(11, 3, 4, 10))
+      svg.appendChild(createLine(4, 10, 1, 11))
+      return svg
+    }
+
+    const remove = () => {
+      const svg = createBaseSvg('icon icon--remove')
+      svg.appendChild(createLine(2, 2, 4, 11))
+      svg.appendChild(createLine(4, 11, 8, 11))
+      svg.appendChild(createLine(8, 11, 10, 2))
+      svg.appendChild(createLine(1, 2, 11, 2))
+      svg.appendChild(createLine(5, 1, 7, 1))
+      return svg
+    }
+
+    return {
+      close,
+      add,
+      edit,
+      remove
+    }
+  })()
+
   const modal = (() => {
     let stack = []
 
     const closeButtonNode = document.createElement('div')
     closeButtonNode.className = 'modal__close'
-    closeButtonNode.textContent = '✕'
+    closeButtonNode.appendChild(icons.close())
 
     const contentNode = document.createElement('div')
 
@@ -287,7 +350,7 @@
 
     const addGroupNode = document.createElement('div')
     addGroupNode.className = 'group-selection-form__add-group'
-    addGroupNode.textContent = '＋'
+    addGroupNode.appendChild(icons.add())
     addGroupNode.addEventListener('click', () => {
       modal.show(groupConfigurationForm.content())
     })
@@ -323,15 +386,15 @@
 
         const editNode = document.createElement('div')
         editNode.className = 'group-selection-form__group-button'
-        editNode.textContent = 'Edit'
+        editNode.appendChild(icons.edit())
         editNode.addEventListener('click', () => {
           modal.show(groupConfigurationForm.content(index))
         })
 
-        const deleteNode = document.createElement('div')
-        deleteNode.className = 'group-selection-form__group-button'
-        deleteNode.textContent = 'Delete'
-        deleteNode.addEventListener('click', () => {
+        const removeNode = document.createElement('div')
+        removeNode.className = 'group-selection-form__group-button'
+        removeNode.appendChild(icons.remove())
+        removeNode.addEventListener('click', () => {
           if (window.confirm(`Delete group '${name}'?`)) {
             state.removeGroup(index)
           }
@@ -342,7 +405,7 @@
         rowNode.appendChild(labelNode)
         rowNode.appendChild(spacerNode)
         rowNode.appendChild(editNode)
-        rowNode.appendChild(deleteNode)
+        rowNode.appendChild(removeNode)
 
         groupContainerNode.appendChild(rowNode)
       })
@@ -405,16 +468,32 @@
       }
       .modal__close {
         position: absolute;
-        top: 0;
-        right: 0;
-        font-size: 1.6em;
-        padding: 0.2em 0.5em;
-        cursor: pointer;
+        top: 1em;
+        right: 1em;
       }
       .modal h1 {
         font-size: 1.4em;
         font-weight: normal;
         margin:0 0 1em 0;
+      }
+      .icon {
+        display: block;
+        stroke: currentColor;
+        height: 1em;
+        width: 1em;
+        cursor: pointer;
+      }
+      .icon:hover {
+        opacity: 0.7;
+      }
+      .icon--add {
+        stroke: #009900;
+      }
+      .icon--edit {
+        stroke: #774201;
+      }
+      .icon--remove {
+        stroke: #B72D2D;
       }
       .group-configuration-form__row {
         display: flex;
@@ -451,12 +530,8 @@
       }
       .group-selection-form__add-group {
         position: absolute;
-        top: 0;
-        right: 1em;
-        font-size: 1.8em;
-        padding: 0.1em 0.5em;
-        color: #007700;
-        cursor: pointer;
+        top: 1em;
+        right: 2.5em;
       }
       .group-selection-form__group-container label {
         display: inline-block;
@@ -470,6 +545,8 @@
         display: flex;
         flex-direction: row;
         align-items: center;
+        margin: 0 -1em;
+        padding: 0 1em;
       }
       .group-selection-form__group:hover {
         background-color: #EEEEEE;
@@ -478,8 +555,7 @@
         flex-grow: 1;
       }
       .group-selection-form__group-button {
-        margin-right: 0.5em;
-        cursor: pointer;
+        margin-left: 0.5em;
       }
     `
 

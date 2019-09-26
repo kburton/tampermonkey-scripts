@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Slack Groups
 // @namespace    https://www.kappasoft.net/
-// @version      0.1
+// @version      0.2
 // @description  Highlight channel groups (tap shift three times to activate)
 // @author       Keith Burton
 // @match        https://app.slack.com/*
@@ -114,6 +114,14 @@
       }
     }
 
+    const clearGroupSelection = () => {
+      data.groups.forEach(group => {
+        group.isSelected = false
+        persist()
+        notifySelectionUpdateListeners()
+      })
+    }
+
     const getMuteUnselectedChannels = () => data.muteUnselectedChannels
 
     const toggleMuteUnselectedChannels = () => {
@@ -132,7 +140,8 @@
       removeGroup,
       toggleGroupSelection,
       getMuteUnselectedChannels,
-      toggleMuteUnselectedChannels
+      toggleMuteUnselectedChannels,
+      clearGroupSelection
     }
   })()
 
@@ -248,7 +257,21 @@
       render()
     }
 
-    closeButtonNode.addEventListener('click', hide)
+    closeButtonNode.addEventListener('click', e => {
+      e.preventDefault()
+      e.stopPropagation()
+      hide()
+    })
+
+    dialogNode.addEventListener('click', e => {
+      e.stopPropagation()
+    })
+
+    node.addEventListener('click', e => {
+      e.preventDefault()
+      e.stopPropagation()
+      hide()
+    })
 
     return {
       node,
@@ -275,6 +298,26 @@
     groupRowNode.appendChild(nameInputNode)
     groupRowNode.appendChild(colorInputNode)
 
+    const shortcutInputNode = document.createElement('input')
+    shortcutInputNode.className = 'group-configuration-form__shortcut'
+    shortcutInputNode.type = 'text'
+    shortcutInputNode.placeholder = 'Shortcut key'
+    shortcutInputNode.addEventListener('keypress', e => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key.match(/^[a-z0-9]$/i)) {
+        shortcutInputNode.value = e.key.toLowerCase()
+      }
+    })
+
+    const shortcutHintNode = document.createElement('div')
+    shortcutHintNode.textContent = 'Key to activate the group when the modal is open (optional)'
+
+    const shortcutRowNode = document.createElement('div')
+    shortcutRowNode.className = 'group-configuration-form__row'
+    shortcutRowNode.appendChild(shortcutInputNode)
+    shortcutRowNode.appendChild(shortcutHintNode)
+
     const channelSelectNode = document.createElement('select')
     channelSelectNode.className = 'group-configuration-form__channels'
     channelSelectNode.multiple = true
@@ -290,6 +333,7 @@
     node.className = 'group-configuration-form'
     node.appendChild(headerNode)
     node.appendChild(groupRowNode)
+    node.appendChild(shortcutRowNode)
     node.appendChild(channelSelectRowNode)
     node.appendChild(controlsNode)
 
@@ -298,13 +342,21 @@
       submitNode.type = 'button'
       submitNode.className = 'group-configuration-form__submit'
       submitNode.value = 'Save'
-      submitNode.addEventListener('click', onSubmit)
+      submitNode.addEventListener('click', e => {
+        e.preventDefault()
+        e.stopPropagation()
+        onSubmit()
+      })
 
       const cancelNode = document.createElement('input')
       cancelNode.type = 'button'
       cancelNode.className = 'group-configuration-form__cancel'
       cancelNode.value = 'Cancel'
-      cancelNode.addEventListener('click', modal.hide)
+      cancelNode.addEventListener('click', e => {
+        e.preventDefault()
+        e.stopPropagation()
+        modal.hide()
+      })
 
       controlsNode.innerHTML = ''
       controlsNode.appendChild(submitNode)
@@ -317,12 +369,14 @@
         name: '',
         color: '#77FF77',
         channels: [],
+        shortcut: '',
         isSelected: false
       } : state.getGroups()[groupIndex]
 
       headerNode.textContent = isNewGroup ? 'Create Group' : 'Edit Group'
       nameInputNode.value = group.name
       colorInputNode.value = group.color
+      shortcutInputNode.value = group.shortcut
 
       channelSelectNode.innerHTML = ''
       slack.getChannels().map(channel => {
@@ -338,6 +392,7 @@
           name: nameInputNode.value,
           color: colorInputNode.value,
           channels: [...channelSelectNode.querySelectorAll('option:checked')].map(option => option.value),
+          shortcut: shortcutInputNode.value,
           isSelected: group.isSelected
         }
         if (isNewGroup) {
@@ -363,7 +418,9 @@
     const addGroupNode = document.createElement('div')
     addGroupNode.className = 'group-selection-form__add-group'
     addGroupNode.appendChild(icons.add())
-    addGroupNode.addEventListener('click', () => {
+    addGroupNode.addEventListener('click', e => {
+      e.preventDefault()
+      e.stopPropagation()
       modal.show(groupConfigurationForm.content())
     })
 
@@ -372,7 +429,11 @@
 
     const muteUnselectedCheckboxNode = document.createElement('input')
     muteUnselectedCheckboxNode.type = 'checkbox'
-    muteUnselectedCheckboxNode.addEventListener('change', state.toggleMuteUnselectedChannels)
+    muteUnselectedCheckboxNode.addEventListener('change', e => {
+      e.preventDefault()
+      e.stopPropagation()
+      state.toggleMuteUnselectedChannels()
+    })
 
     const muteUnselectedDescriptionNode = document.createElement('span')
     muteUnselectedDescriptionNode.textContent = 'Mute unselected channels'
@@ -389,27 +450,69 @@
     node.appendChild(groupContainerNode)
     node.appendChild(muteUnselectedLabelNode)
 
+    node.addEventListener('keypress', e => {
+      const key = e.key.toLowerCase()
+      const matchingGroupIndexes = state.getGroups()
+        .map(({ shortcut }, index) => ({ shortcut, index }))
+        .filter(group => group.shortcut === key)
+        .map(group => group.index)
+
+      if (matchingGroupIndexes.length > 0) {
+        e.preventDefault()
+        e.stopPropagation()
+        state.clearGroupSelection()
+        matchingGroupIndexes.forEach(index => {
+          state.toggleGroupSelection(index)
+        })
+        modal.hide()
+      }
+    })
+
+    node.addEventListener('keydown', e => {
+      if (['Backspace', 'Delete'].includes(e.code)) {
+        e.preventDefault()
+        e.stopPropagation()
+        state.clearGroupSelection()
+        modal.hide()
+      }
+    })
+
     const content = () => {
       groupContainerNode.innerHTML = ''
 
       muteUnselectedCheckboxNode.checked = state.getMuteUnselectedChannels()
 
+      if (state.getGroups().length === 0) {
+        const noGroupsNode = document.createElement('div')
+        noGroupsNode.textContent = 'You haven\'t created any channel groups yet. Click the green plus button to get started.'
+        groupContainerNode.appendChild(noGroupsNode)
+      }
+
       state.getGroups()
-        .map(({ name, color, isSelected }, index) => ({ name, color, isSelected, index }))
+        .map(({ name, color, shortcut, isSelected }, index) => ({ name, color, shortcut, isSelected, index }))
         .sort((group1, group2) => group1.name.toLowerCase() < group2.name.toLowerCase() ? -1 : 1)
-        .forEach(({ name, color, isSelected, index }) => {
+        .forEach(({ name, color, shortcut, isSelected, index }) => {
           const checkboxNode = document.createElement('input')
           checkboxNode.type = 'checkbox'
           checkboxNode.checked = isSelected
-          checkboxNode.addEventListener('change', () => state.toggleGroupSelection(index))
+          checkboxNode.addEventListener('change', e => {
+            e.preventDefault()
+            e.stopPropagation()
+            state.toggleGroupSelection(index)
+          })
 
           const nameNode = document.createElement('span')
           nameNode.textContent = name
 
           const labelNode = document.createElement('label')
+          labelNode.className = 'group-selection-form__group-label'
           labelNode.style.borderBottom = `2px solid ${color}`
           labelNode.appendChild(checkboxNode)
           labelNode.appendChild(nameNode)
+
+          const shortcutNode = document.createElement('span')
+          shortcutNode.className = 'group-selection-form__group-shortcut'
+          shortcutNode.textContent = shortcut ? `[ ${shortcut} ]` : ''
 
           const spacerNode = document.createElement('div')
           spacerNode.className = 'group-selection-form__group-spacer'
@@ -417,14 +520,18 @@
           const editNode = document.createElement('div')
           editNode.className = 'group-selection-form__group-button'
           editNode.appendChild(icons.edit())
-          editNode.addEventListener('click', () => {
+          editNode.addEventListener('click', e => {
+            e.preventDefault()
+            e.stopPropagation()
             modal.show(groupConfigurationForm.content(index))
           })
 
           const removeNode = document.createElement('div')
           removeNode.className = 'group-selection-form__group-button'
           removeNode.appendChild(icons.remove())
-          removeNode.addEventListener('click', () => {
+          removeNode.addEventListener('click', e => {
+            e.preventDefault()
+            e.stopPropagation()
             if (window.confirm(`Delete group '${name}'?`)) {
               state.removeGroup(index)
             }
@@ -433,6 +540,7 @@
           const rowNode = document.createElement('div')
           rowNode.className = 'group-selection-form__group'
           rowNode.appendChild(labelNode)
+          rowNode.appendChild(shortcutNode)
           rowNode.appendChild(spacerNode)
           rowNode.appendChild(editNode)
           rowNode.appendChild(removeNode)
@@ -530,6 +638,7 @@
       .group-configuration-form__row {
         display: flex;
         flex-direction: row;
+        align-items: center;
         margin-bottom: 1em;
       }
       .group-configuration-form__name {
@@ -541,6 +650,10 @@
       .group-configuration-form__color {
         border-top-left-radius: 0;
         border-bottom-left-radius: 0;
+      }
+      .group-configuration-form__shortcut {
+        width: 7em;
+        margin-right: 0.5em;
       }
       .group-configuration-form__channels {
         flex-grow: 1;
@@ -565,13 +678,19 @@
         bottom: 1em;
         right: 1em;
       }
-      .group-selection-form__group-container label {
+      .group-selection-form__group-label {
         display: flex;
         flex-direction: row;
         align-items: center;
+        padding-right: 0.3em;
       }
-      .group-selection-form__group-container label input {
+      .group-selection-form__group-label input {
         margin-right: 0.5em;
+      }
+      .group-selection-form__group-shortcut {
+        color: #888888;
+        font-weight: bold;
+        margin: 0 0 2px 0.7em
       }
       .group-selection-form__group {
         display: flex;
@@ -629,8 +748,14 @@
       }
 
       selectedGroups.forEach(group => {
-        const selector = group.channels.map(channel => `[data-qa-channel-sidebar-channel-id="${channel}"] span`).join(', ')
-        cssRules.push(`${selector} { color: ${group.color} !important; opacity: 1 !important; }`)
+        const channelSelector = group.channels.map(channel =>
+          `[data-qa-channel-sidebar-channel-id="${channel}"] span`
+        ).join(', ')
+        const channelNameSelector = group.channels.map(channel =>
+          `[data-qa-channel-sidebar-channel-id="${channel}"] span:first-child`
+        ).join(', ')
+        cssRules.push(`${channelSelector} { opacity: 1 !important; }`)
+        cssRules.push(`${channelNameSelector} { color: ${group.color} !important; }`)
       })
 
       node.textContent = cssRules.join('\n')
@@ -664,9 +789,7 @@
 
         if (shiftCount >= 3) {
           shiftCount = 0
-          modal.show(
-            state.getGroups().length === 0 ? groupConfigurationForm.content() : groupSelectionForm.content()
-          )
+          modal.show(groupSelectionForm.content())
         }
 
         if (isEscape) {

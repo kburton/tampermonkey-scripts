@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Slack Groups
 // @namespace    https://www.kappasoft.net/
-// @version      0.2
+// @version      0.3
 // @description  Highlight channel groups (tap shift three times to activate)
 // @author       Keith Burton
 // @match        https://app.slack.com/*
@@ -58,6 +58,13 @@
         data.groups = deserialized.groups || []
         data.muteUnselectedChannels = deserialized.muteUnselectedChannels
       }
+    }
+
+    const toJson = () => {
+      return JSON.stringify({
+        teamId: slack.getTeamId(),
+        ...data
+      }, null, 2)
     }
 
     const registerGroupUpdateListener = onUpdate => {
@@ -132,6 +139,7 @@
 
     return {
       init,
+      toJson,
       registerGroupUpdateListener,
       registerSelectionUpdateListener,
       getGroups,
@@ -278,6 +286,29 @@
       isShowing,
       show,
       hide
+    }
+  })()
+
+  const exportForm = (() => {
+    const headerNode = document.createElement('h1')
+    headerNode.textContent = 'Export Configuration'
+
+    const exportNode = document.createElement('textArea')
+    exportNode.className = 'export-form__export'
+    exportNode.readOnly = true
+
+    const node = document.createElement('div')
+    node.className = 'export-form'
+    node.appendChild(headerNode)
+    node.appendChild(exportNode)
+
+    const content = () => {
+      exportNode.textContent = state.toJson()
+      return node
+    }
+
+    return {
+      content
     }
   })()
 
@@ -466,6 +497,12 @@
         })
         modal.hide()
       }
+
+      if (e.shiftKey && e.code === 'KeyX') {
+        e.preventDefault()
+        e.stopPropagation()
+        modal.show(exportForm.content())
+      }
     })
 
     node.addEventListener('keydown', e => {
@@ -565,7 +602,8 @@
         box-sizing: border-box;
       }
       input,
-      select {
+      select,
+      textarea {
         height: 2em;
         font-size: 1em;
         border: 1px solid #999999;
@@ -634,6 +672,12 @@
       }
       .icon--remove {
         stroke: #B72D2D;
+      }
+      .export-form__export {
+        display: block;
+        width: 100%;
+        height: 20em;
+        margin-bottom: 1em;
       }
       .group-configuration-form__row {
         display: flex;

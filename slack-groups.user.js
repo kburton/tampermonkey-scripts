@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Slack Groups
 // @namespace    https://www.kappasoft.net/
-// @version      0.3
+// @version      0.4
 // @description  Highlight channel groups (tap shift three times to activate)
 // @author       Keith Burton
 // @match        https://app.slack.com/*
@@ -783,9 +783,9 @@
       const cssRules = []
 
       if (selectedGroups.length > 0 && state.getMuteUnselectedChannels()) {
-        const publicChannelSelector = '[data-qa-channel-sidebar-channel-type="channel"] span'
-        const privateChannelSelector = '[data-qa-channel-sidebar-channel-type="private"] span'
-        const activeChannelSelector = '[data-qa-channel-sidebar-channel-is-selected="true"] span'
+        const publicChannelSelector = '[data-qa-channel-sidebar-channel-type="channel"]'
+        const privateChannelSelector = '[data-qa-channel-sidebar-channel-type="private"]'
+        const activeChannelSelector = '[data-qa-channel-sidebar-channel-is-selected="true"]'
 
         cssRules.push(`${publicChannelSelector}, ${privateChannelSelector} { opacity: 0.2 !important; }`)
         cssRules.push(`${activeChannelSelector} { opacity: 1 !important; }`)
@@ -793,10 +793,10 @@
 
       selectedGroups.forEach(group => {
         const channelSelector = group.channels.map(channel =>
-          `[data-qa-channel-sidebar-channel-id="${channel}"] span`
+          `[data-qa-channel-sidebar-channel-id="${channel}"]`
         ).join(', ')
         const channelNameSelector = group.channels.map(channel =>
-          `[data-qa-channel-sidebar-channel-id="${channel}"] span:first-child`
+          `[data-qa-channel-sidebar-channel-id="${channel}"] span:first-of-type`
         ).join(', ')
         cssRules.push(`${channelSelector} { opacity: 1 !important; }`)
         cssRules.push(`${channelNameSelector} { color: ${group.color} !important; }`)

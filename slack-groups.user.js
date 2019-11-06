@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Slack Groups
 // @namespace    https://www.kappasoft.net/
-// @version      0.4
+// @version      0.5
 // @description  Highlight channel groups (tap shift three times to activate)
 // @author       Keith Burton
 // @match        https://app.slack.com/*
@@ -795,10 +795,14 @@
         const channelSelector = group.channels.map(channel =>
           `[data-qa-channel-sidebar-channel-id="${channel}"]`
         ).join(', ')
+        const channelIconSelector = group.channels.map(channel =>
+          `[data-qa-channel-sidebar-channel-id="${channel}"] i`
+        ).join(', ')
         const channelNameSelector = group.channels.map(channel =>
           `[data-qa-channel-sidebar-channel-id="${channel}"] span:first-of-type`
         ).join(', ')
         cssRules.push(`${channelSelector} { opacity: 1 !important; }`)
+        cssRules.push(`${channelIconSelector} { color: ${group.color} !important; }`)
         cssRules.push(`${channelNameSelector} { color: ${group.color} !important; }`)
       })
 
